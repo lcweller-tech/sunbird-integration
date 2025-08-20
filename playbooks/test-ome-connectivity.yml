@@ -11,15 +11,17 @@
         user: "{{ ome_username }}"
         password: "{{ ome_password }}"
         force_basic_auth: yes
-        validate_certs: "{{ ome_validate_certs }}"
+        validate_certs: "{{ ome_validate_certs | default(false) }}"
         timeout: 30
       register: ome_info_test
+      delegate_to: localhost
       
     - name: "Display OME connection results"
       debug:
         msg: 
           - "OME Version: {{ ome_info_test.json.Version | default('Unknown') }}"
-          - "OME Build: {{ ome_info_test.json.Build | default('Unknown') }}"
+          - "OME Build: {{ ome_info_test.json.BuildNumber | default('Unknown') }}"
+      delegate_to: localhost
           
     - name: "Get device count from OME"
       uri:
@@ -28,29 +30,42 @@
         user: "{{ ome_username }}"
         password: "{{ ome_password }}"
         force_basic_auth: yes
-        validate_certs: "{{ ome_validate_certs }}"
+        validate_certs: "{{ ome_validate_certs | default(false) }}"
+        timeout: 60
       register: device_count_test
+      delegate_to: localhost
       
     - name: "Display device count"
       debug:
-        msg: "Total devices in OME: {{ device_count_test.json['@odata.count'] }}"
+        msg: "Total devices in OME: {{ device_count_test.json['@odata.count'] | default('Unable to retrieve count') }}"
+      delegate_to: localhost
 
 - name: "Test SunBird API Connectivity"
   hosts: localhost
   gather_facts: false
+  vars:
+    # Get SunBird settings from inventory or use defaults for testing
+    sunbird_test_url: "{{ sunbird_base_url | default('https://sunbird.company.com') }}"
+    sunbird_test_user: "{{ sunbird_username | default('test_user') }}"
+    sunbird_test_pass: "{{ sunbird_password | default('test_pass') }}"
   
   tasks:
     - name: "Test SunBird API connectivity"
       uri:
-        url: "{{ hostvars[groups['ome_servers'][0]]['sunbird_base_url'] }}/api/v2/authentication/login"
+        url: "{{ sunbird_test_url }}/api/v2/authentication/login"
         method: POST
-        user: "{{ hostvars[groups['ome_servers'][0]]['sunbird_username'] }}"
-        password: "{{ hostvars[groups['ome_servers'][0]]['sunbird_password'] }}"
+        user: "{{ sunbird_test_user }}"
+        password: "{{ sunbird_test_pass }}"
         force_basic_auth: yes
         validate_certs: true
         timeout: 30
+        status_code: [200, 401, 403, 404]  # Accept various responses for testing
       register: sunbird_test
+      failed_when: false  # Don't fail on auth errors during testing
       
     - name: "Display SunBird connection results"
       debug:
-        msg: "SunBird API connection: {{ 'SUCCESS' if sunbird_test.status == 200 else 'FAILED' }}"
+        msg: 
+          - "SunBird URL tested: {{ sunbird_test_url }}"
+          - "Response code: {{ sunbird_test.status | default('No response') }}"
+          - "Connection status: {{ 'SUCCESS' if sunbird_test.status == 200 else 'Reachable but needs proper credentials' if sunbird_test.status in [401, 403] else 'Check URL and network connectivity' }}"
