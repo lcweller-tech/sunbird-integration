@@ -1,0 +1,34 @@
+---
+- name: "Validate required variables"
+  assert:
+    that:
+      - ome_console_url is defined
+      - ome_username is defined
+      - ome_password is defined
+    fail_msg: "Required OME connection variables are not defined"
+
+- name: "Authenticate with OME API"
+  include_tasks: authenticate.yml
+
+- name: "Collect all devices from OME"
+  include_tasks: collect_devices.yml
+
+- name: "Collect detailed inventory"
+  include_tasks: collect_inventory.yml
+  when: 
+    - collect_detailed_inventory | default(true)
+    - dell_servers | length > 0
+
+- name: "Transform data for SunBird"
+  include_tasks: transform_data.yml
+  when: dell_servers | length > 0
+
+- name: "Cleanup OME session"
+  uri:
+    url: "{{ ome_console_url }}{{ ome_api_base }}/SessionService/Sessions('{{ ome_session_id }}')"
+    method: DELETE
+    headers:
+      X-Auth-Token: "{{ ome_session_token }}"
+    validate_certs: "{{ ome_validate_certs }}"
+    timeout: 30
+  failed_when: false  # Don't fail if session cleanup fails
