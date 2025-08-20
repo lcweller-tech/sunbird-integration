@@ -1,6 +1,0 @@
----
-collections:
-  - name: dellemc.openmanage
-    version: ">=7.0.0"
-  - name: ansible.posix
-  - name: community.general
