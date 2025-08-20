@@ -1,0 +1,24 @@
+---
+- name: "Collect inventory for batch {{ batch_index + 1 }}"
+  uri:
+    url: "{{ ome_console_url }}{{ ome_api_base }}/DeviceService/Devices({{ item.Id }})/InventoryDetails"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      X-Auth-Token: "{{ ome_session_token }}"
+    validate_certs: "{{ ome_validate_certs }}"
+    timeout: "{{ ome_timeout }}"
+  register: batch_inventory_raw
+  loop: "{{ server_batch }}"
+  loop_control:
+    label: "{{ item.DeviceName }} ({{ item.DeviceServiceTag }})"
+  retries: "{{ max_retries | default(3) }}"
+  delay: "{{ retry_delay | default(5) }}"
+
+- name: "Process batch inventory data"
+  set_fact:
+    batch_inventory_results: >-
+      {{
+        batch_inventory_results | default([]) +
+        [server_batch | zip(batch_inventory_raw.results) | list]
+      }}
