@@ -1,0 +1,19 @@
+---
+- name: "Authenticate with SunBird API"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/authentication/login"
+    method: POST
+    user: "{{ sunbird_username }}"
+    password: "{{ sunbird_password }}"
+    force_basic_auth: yes
+    validate_certs: "{{ sunbird_verify_ssl }}"
+    timeout: "{{ sunbird_timeout }}"
+  register: sunbird_auth_response
+  delegate_to: localhost
+  run_once: true
+
+- name: "Extract SunBird token"
+  set_fact:
+    sunbird_token: "{{ sunbird_auth_response.headers.Authorization.split(' ')[1] }}"
+  delegate_to: localhost
+  run_once: true
