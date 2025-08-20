@@ -1,0 +1,57 @@
+---
+- name: "Search for existing item in SunBird"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/search"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      columns:
+        - name: "tiSerialNumber"
+          filter:
+            eq: "{{ item_data.tiSerialNumber }}"
+      selectedColumns:
+        - name: "id"
+        - name: "tiName"
+    validate_certs: "{{ sunbird_verify_ssl }}"
+  register: existing_item_search
+  delegate_to: localhost
+
+- name: "Determine operation type"
+  set_fact:
+    item_exists: "{{ existing_item_search.json.totalRows > 0 }}"
+    existing_item_id: "{{ existing_item_search.json.searchResults.items[0].id if existing_item_search.json.totalRows > 0 else none }}"
+
+- name: "Create new SunBird item"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/items"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ item_data }}"
+    validate_certs: "{{ sunbird_verify_ssl }}"
+  register: create_result
+  when: not item_exists
+  delegate_to: localhost
+
+- name: "Update existing SunBird item"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/items/{{ existing_item_id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ item_data }}"
+    validate_certs: "{{ sunbird_verify_ssl }}"
+  register: update_result
+  when: item_exists
+  delegate_to: localhost
+
+- name: "Log operation result"
+  debug:
+    msg: "{{ 'Updated' if item_exists else 'Created' }} item: {{ item_data.tiName }} ({{ item_data.tiSerialNumber }})"
