@@ -1,28 +1,84 @@
 ---
-- name: "Dell OME to SunBird Integration"
+- name: "Dell OME to SunBird Integration - Production"
   hosts: ome_servers
-  gather_facts: true
+  gather_facts: false
   
   tasks:
-    - name: "Collect server data from OME"
-      include_role:
-        name: ome-collector
-      
-    - name: "Authenticate with SunBird"
-      include_role:
-        name: sunbird-common
+    - name: "Authenticate with OME API"
+      uri:
+        url: "{{ ome_console_url }}/api/SessionService/Sessions"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          UserName: "{{ ome_username }}"
+          Password: "{{ ome_password }}"
+          SessionType: "API"
+        validate_certs: "{{ ome_validate_certs | default(false) }}"
+        timeout: "{{ ome_timeout | default(60) }}"
+        status_code: [200, 201]
+      register: ome_auth_response
       delegate_to: localhost
-      run_once: true
-      
-    - name: "Sync devices to SunBird"
-      include_role:
-        name: sunbird-common
-        tasks_from: manage_item
-      vars:
-        item_data: "{{ device }}"
-      loop: "{{ sunbird_devices }}"
+      no_log: true
+
+    - name: "Extract OME session token"
+      set_fact:
+        ome_session_token: "{{ ome_auth_response.json.SessionToken }}"
+        ome_session_id: "{{ ome_auth_response.json.Id }}"
+      delegate_to: localhost
+      no_log: true
+
+    - name: "Get all Dell PowerEdge servers from OME"
+      uri:
+        url: "{{ ome_console_url }}/api/DeviceService/Devices?$filter=Type eq 1000 and contains(Model,'PowerEdge')"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+          X-Auth-Token: "{{ ome_session_token }}"
+        validate_certs: "{{ ome_validate_certs | default(false) }}"
+        timeout: "{{ ome_timeout | default(120) }}"
+      register: ome_devices_response
+      delegate_to: localhost
+      retries: 3
+      delay: 10
+
+    - name: "Display device discovery summary"
+      debug:
+        msg: 
+          - "Total PowerEdge servers found: {{ ome_devices_response.json.value | length }}"
+          - "Processing in batches of {{ batch_size | default(50) }}"
+      delegate_to: localhost
+
+    - name: "Create device batches for processing"
+      set_fact:
+        device_batches: "{{ ome_devices_response.json.value | batch(batch_size | default(50)) | list }}"
+      delegate_to: localhost
+
+    - name: "Process device batches"
+      include_tasks: process_device_batch.yml
+      loop: "{{ device_batches }}"
       loop_control:
-        loop_var: device
-        label: "{{ device.tiName }}"
+        loop_var: device_batch
+        index_var: batch_index
+        label: "Batch {{ batch_index + 1 }}/{{ device_batches | length }} ({{ device_batch | length }} devices)"
       delegate_to: localhost
-      when: sunbird_devices is defined and sunbird_devices | length > 0
+
+    - name: "Display integration summary"
+      debug:
+        msg:
+          - "Integration completed successfully"
+          - "Total devices processed: {{ ome_devices_response.json.value | length }}"
+          - "Batches processed: {{ device_batches | length }}"
+      delegate_to: localhost
+
+    - name: "Cleanup OME session"
+      uri:
+        url: "{{ ome_console_url }}/api/SessionService/Sessions('{{ ome_session_id }}')"
+        method: DELETE
+        headers:
+          X-Auth-Token: "{{ ome_session_token }}"
+        validate_certs: "{{ ome_validate_certs | default(false) }}"
+        timeout: 30
+      delegate_to: localhost
+      failed_when: false
