@@ -1,0 +1,28 @@
+---
+- name: "Dell OME to SunBird Integration"
+  hosts: ome_servers
+  gather_facts: true
+  
+  tasks:
+    - name: "Collect server data from OME"
+      include_role:
+        name: ome-collector
+      
+    - name: "Authenticate with SunBird"
+      include_role:
+        name: sunbird-common
+      delegate_to: localhost
+      run_once: true
+      
+    - name: "Sync devices to SunBird"
+      include_role:
+        name: sunbird-common
+        tasks_from: manage_item
+      vars:
+        item_data: "{{ device }}"
+      loop: "{{ sunbird_devices }}"
+      loop_control:
+        loop_var: device
+        label: "{{ device.tiName }}"
+      delegate_to: localhost
+      when: sunbird_devices is defined and sunbird_devices | length > 0
