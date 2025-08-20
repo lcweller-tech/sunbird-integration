@@ -1,0 +1,56 @@
+---
+- name: "Test OME and SunBird Connectivity"
+  hosts: ome_servers
+  gather_facts: false
+  
+  tasks:
+    - name: "Test OME API connectivity"
+      uri:
+        url: "{{ ome_console_url }}/api/ApplicationService/Info"
+        method: GET
+        user: "{{ ome_username }}"
+        password: "{{ ome_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ ome_validate_certs }}"
+        timeout: 30
+      register: ome_info_test
+      
+    - name: "Display OME connection results"
+      debug:
+        msg: 
+          - "OME Version: {{ ome_info_test.json.Version | default('Unknown') }}"
+          - "OME Build: {{ ome_info_test.json.Build | default('Unknown') }}"
+          
+    - name: "Get device count from OME"
+      uri:
+        url: "{{ ome_console_url }}/api/DeviceService/Devices?$count=true&$top=1"
+        method: GET
+        user: "{{ ome_username }}"
+        password: "{{ ome_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ ome_validate_certs }}"
+      register: device_count_test
+      
+    - name: "Display device count"
+      debug:
+        msg: "Total devices in OME: {{ device_count_test.json['@odata.count'] }}"
+
+- name: "Test SunBird API Connectivity"
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: "Test SunBird API connectivity"
+      uri:
+        url: "{{ hostvars[groups['ome_servers'][0]]['sunbird_base_url'] }}/api/v2/authentication/login"
+        method: POST
+        user: "{{ hostvars[groups['ome_servers'][0]]['sunbird_username'] }}"
+        password: "{{ hostvars[groups['ome_servers'][0]]['sunbird_password'] }}"
+        force_basic_auth: yes
+        validate_certs: true
+        timeout: 30
+      register: sunbird_test
+      
+    - name: "Display SunBird connection results"
+      debug:
+        msg: "SunBird API connection: {{ 'SUCCESS' if sunbird_test.status == 200 else 'FAILED' }}"
