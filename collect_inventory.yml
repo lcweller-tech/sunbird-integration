@@ -1,0 +1,16 @@
+---
+- name: "Create batches for inventory collection"
+  set_fact:
+    server_batches: "{{ dell_servers | batch(batch_size) | list }}"
+
+- name: "Collect detailed inventory for server batches"
+  include_tasks: collect_batch_inventory.yml
+  loop: "{{ server_batches }}"
+  loop_control:
+    loop_var: server_batch
+    index_var: batch_index
+    label: "Batch {{ batch_index + 1 }}/{{ server_batches | length }} ({{ server_batch | length }} servers)"
+
+- name: "Combine all inventory results"
+  set_fact:
+    all_server_inventory: "{{ batch_inventory_results | default([]) | flatten }}"
