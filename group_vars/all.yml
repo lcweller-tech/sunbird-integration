@@ -1,0 +1,19 @@
+---
+# Global settings for all integrations
+sunbird_verify_ssl: true
+sunbird_timeout: 30
+
+# OME settings
+ome_validate_certs: true
+ome_timeout: 60
+
+# Processing settings
+max_retries: 3
+retry_delay: 10
+batch_size: 100
+enable_deduplication: true
+log_level: INFO
+
+# Performance settings
+enable_parallel_processing: true
+max_concurrent_requests: 10
