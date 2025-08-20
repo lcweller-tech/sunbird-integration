@@ -1,0 +1,64 @@
+---
+- name: "Search for existing device in SunBird"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/search"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      columns:
+        - name: "tiSerialNumber"
+          filter:
+            eq: "{{ device_data.tiSerialNumber }}"
+      selectedColumns:
+        - name: "id"
+        - name: "tiName"
+    validate_certs: "{{ sunbird_verify_ssl | default(true) }}"
+    timeout: "{{ sunbird_timeout | default(30) }}"
+  register: existing_device_search
+  retries: 3
+  delay: 5
+
+- name: "Determine operation type"
+  set_fact:
+    device_exists: "{{ existing_device_search.json.totalRows > 0 }}"
+    existing_device_id: "{{ existing_device_search.json.searchResults.items[0].id if existing_device_search.json.totalRows > 0 else none }}"
+
+- name: "Create new SunBird device"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/items"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ device_data }}"
+    validate_certs: "{{ sunbird_verify_ssl | default(true) }}"
+    timeout: "{{ sunbird_timeout | default(30) }}"
+  register: create_result
+  when: not device_exists
+  retries: 3
+  delay: 5
+
+- name: "Update existing SunBird device"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/dcimoperations/items/{{ existing_device_id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ sunbird_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ device_data }}"
+    validate_certs: "{{ sunbird_verify_ssl | default(true) }}"
+    timeout: "{{ sunbird_timeout | default(30) }}"
+  register: update_result
+  when: device_exists
+  retries: 3
+  delay: 5
+
+- name: "Log sync result"
+  debug:
+    msg: "{{ 'Updated' if device_exists else 'Created' }} device: {{ device_data.tiName }}"
+  when: enable_device_logging | default(false)
