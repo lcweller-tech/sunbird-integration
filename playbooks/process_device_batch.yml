@@ -1,0 +1,60 @@
+---
+- name: "Transform OME devices to SunBird format"
+  set_fact:
+    sunbird_devices_batch: >-
+      {{
+        device_batch | map('ome_to_sunbird_transform') | list
+      }}
+  vars:
+    ome_to_sunbird_transform: |
+      {%- set device = item -%}
+      {%- set mgmt = device.DeviceManagement[0] if device.DeviceManagement else {} -%}
+      {
+        "tiName": "{{ device.DeviceName | default('Unknown') }}",
+        "tiSerialNumber": "{{ device.DeviceServiceTag | default('') }}",
+        "cmbMake": "Dell",
+        "cmbModel": "{{ device.Model | default('Unknown') }}",
+        "cmbLocation": "{{ device.Location | default('Data Center') }}",
+        "tiDescription": "Dell {{ device.Model | default('PowerEdge') }} via OME - Last Sync: {{ ansible_date_time.iso8601 }}",
+        "cfHealthState": "{{ 'Healthy' if device.Status == 1000 else 'Warning' if device.Status == 2000 else 'Critical' if device.Status == 3000 else 'Unknown' }}",
+        "cfPowerState": "{{ 'On' if device.PowerState == 17 else 'Off' if device.PowerState == 18 else 'Unknown' }}",
+        "cfDeviceType": "Server",
+        "cfServiceTag": "{{ device.DeviceServiceTag | default('') }}",
+        "cfAssetTag": "{{ device.AssetTag | default('') }}",
+        "cfIPAddress": "{{ mgmt.NetworkAddress | default('Unknown') }}",
+        "cfMacAddress": "{{ mgmt.MacAddress | default('Unknown') }}",
+        "cfOMEDeviceId": "{{ device.Id }}",
+        "cfConnectionState": "{{ 'Connected' if device.ConnectionState else 'Disconnected' }}",
+        "cfManagedState": "{{ device.ManagedState | default(0) }}",
+        "cfLastInventory": "{{ device.LastInventoryTime | default('Unknown') }}",
+        "cfLastStatus": "{{ device.LastStatusTime | default('Unknown') }}",
+        "cfDataSources": "ome",
+        "cfLastOMESync": "{{ ansible_date_time.iso8601 }}",
+        "cfCollectionTimestamp": "{{ ansible_date_time.epoch }}"
+      }
+
+- name: "Authenticate with SunBird API"
+  uri:
+    url: "{{ sunbird_base_url }}/api/v2/authentication/login"
+    method: POST
+    user: "{{ sunbird_username }}"
+    password: "{{ sunbird_password }}"
+    force_basic_auth: yes
+    validate_certs: "{{ sunbird_verify_ssl | default(true) }}"
+    timeout: "{{ sunbird_timeout | default(30) }}"
+  register: sunbird_auth_response
+  run_once: true
+  when: sunbird_token is not defined
+
+- name: "Extract SunBird token"
+  set_fact:
+    sunbird_token: "{{ sunbird_auth_response.headers.Authorization.split(' ')[1] }}"
+  run_once: true
+  when: sunbird_auth_response is defined
+
+- name: "Process each device in batch"
+  include_tasks: sync_single_device.yml
+  loop: "{{ sunbird_devices_batch }}"
+  loop_control:
+    loop_var: device_data
+    label: "{{ device_data.tiName }} ({{ device_data.tiSerialNumber }})"
